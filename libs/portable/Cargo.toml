@@ -27,9 +27,12 @@ native-windows-gui = {version = "1.0", default-features = false, features = ["an
 
 [package.metadata.winres]
 LegalCopyright = "Copyright © 2026 Purslane Tech Pte. Ltd. All rights reserved."
-ProductName = "RustDesk"
+# reFX: this crate builds the self-extracting exe, which is the only Windows
+# file a customer downloads - so this is the version info they actually see in
+# Explorer and on the SmartScreen prompt, not the Flutter runner's Runner.rc.
+ProductName = "reFX Remote"
 OriginalFilename = "rustdesk.exe"
-FileDescription = "RustDesk Remote Desktop"
+FileDescription = "reFX Remote Support"
 #ProductVersion = ""
 
 [target.'cfg(target_os="windows")'.build-dependencies]
