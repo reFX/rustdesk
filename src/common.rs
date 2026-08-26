@@ -1013,14 +1013,7 @@ pub fn is_rustdesk() -> bool {
 
 #[inline]
 pub fn get_uri_prefix() -> String {
-    // reFX: APP_NAME is "reFX Remote" for display, but a URI scheme cannot
-    // contain a space - registering "refx remote://" would be malformed.
-    format!(
-        "{}://",
-        get_app_name()
-            .to_lowercase()
-            .replace(char::is_whitespace, "")
-    )
+    format!("{}://", get_app_name().to_lowercase())
 }
 
 #[cfg(target_os = "macos")]

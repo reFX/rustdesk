@@ -908,7 +908,7 @@ jobs:
           # RustDesk; nothing shows it to a user and renaming it risks the
           # helper lookups at runtime.
           REL=./flutter/build/macos/Build/Products/Release
-          mv "$REL/RustDesk.app" "$REL/reFX Remote.app"
+          mv "$REL/RustDesk.app" "$REL/reFX-Remote.app"
           ls -la "$REL"
 
       - name: create unsigned dmg
@@ -917,7 +917,7 @@ jobs:
           CREATE_DMG="$(command -v create-dmg)"
           CREATE_DMG="$(readlink -f "$CREATE_DMG")"
           sed -i -e 's/MAXIMUM_UNMOUNTING_ATTEMPTS=3/MAXIMUM_UNMOUNTING_ATTEMPTS=7/' "$CREATE_DMG"
-          create-dmg --icon "reFX Remote.app" 200 190 --hide-extension "reFX Remote.app" --window-size 800 400 --app-drop-link 600 185 rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.dmg "./flutter/build/macos/Build/Products/Release/reFX Remote.app"
+          create-dmg --icon "reFX-Remote.app" 200 190 --hide-extension "reFX-Remote.app" --window-size 800 400 --app-drop-link 600 185 rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.dmg "./flutter/build/macos/Build/Products/Release/reFX-Remote.app"
 
       - name: Upload unsigned macOS app
         if: env.UPLOAD_ARTIFACT == 'true'
@@ -938,8 +938,8 @@ jobs:
           security unlock-keychain -p ${{ secrets.MACOS_P12_PASSWORD }} rustdesk.keychain
           # start sign the rustdesk.app and dmg
           rm -rf *.dmg || true
-          codesign --force --options runtime -s ${{ secrets.MACOS_CODESIGN_IDENTITY }} --deep --strict "./flutter/build/macos/Build/Products/Release/reFX Remote.app" -vvv
-          create-dmg --icon "reFX Remote.app" 200 190 --hide-extension "reFX Remote.app" --window-size 800 400 --app-drop-link 600 185 rustdesk-${{ env.VERSION }}.dmg "./flutter/build/macos/Build/Products/Release/reFX Remote.app"
+          codesign --force --options runtime -s ${{ secrets.MACOS_CODESIGN_IDENTITY }} --deep --strict "./flutter/build/macos/Build/Products/Release/reFX-Remote.app" -vvv
+          create-dmg --icon "reFX-Remote.app" 200 190 --hide-extension "reFX-Remote.app" --window-size 800 400 --app-drop-link 600 185 rustdesk-${{ env.VERSION }}.dmg "./flutter/build/macos/Build/Products/Release/reFX-Remote.app"
           codesign --force --options runtime -s ${{ secrets.MACOS_CODESIGN_IDENTITY }} --deep --strict rustdesk-${{ env.VERSION }}.dmg -vvv
           # notarize the rustdesk-${{ env.VERSION }}.dmg
           rcodesign notary-submit --api-key-path ${{ github.workspace }}/rustdesk.json  --staple rustdesk-${{ env.VERSION }}.dmg
@@ -991,22 +991,22 @@ jobs:
             hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mnt"
             mkdir -p "./app-$arch"
             # -R preserves the symlinks inside the bundle
-            cp -R "$mnt/reFX Remote.app" "./app-$arch/"
+            cp -R "$mnt/reFX-Remote.app" "./app-$arch/"
             hdiutil detach "$mnt"
-            echo "$arch: $(du -sh "./app-$arch/reFX Remote.app" | cut -f1)"
+            echo "$arch: $(du -sh "./app-$arch/reFX-Remote.app" | cut -f1)"
           done
 
       - name: Merge into a universal binary
         run: |
           set -euo pipefail
-          ARM="./app-aarch64/reFX Remote.app"
-          X64="./app-x86_64/reFX Remote.app"
+          ARM="./app-aarch64/reFX-Remote.app"
+          X64="./app-x86_64/reFX-Remote.app"
           # Start from the arm64 bundle and replace each Mach-O with a fat one.
           # Everything else - assets, plists, symlinks - is identical between the
           # two, so the arm64 copy is already correct.
           rm -rf ./universal && mkdir -p ./universal
           cp -R "$ARM" ./universal/
-          OUT="./universal/reFX Remote.app"
+          OUT="./universal/reFX-Remote.app"
 
           merged=0; skipped=0; missing=0
           while IFS= read -r f; do
@@ -1038,7 +1038,7 @@ jobs:
       - name: Verify the result is actually universal
         run: |
           set -euo pipefail
-          BIN="./universal/reFX Remote.app/Contents/MacOS/RustDesk"
+          BIN="./universal/reFX-Remote.app/Contents/MacOS/RustDesk"
           lipo -info "$BIN"
           for want in x86_64 arm64; do
             if ! lipo -info "$BIN" | grep -q "$want"; then
@@ -1053,10 +1053,10 @@ jobs:
               arches=$(lipo -archs "$f" 2>/dev/null || echo "?")
               case "$arches" in
                 *x86_64*arm64*|*arm64*x86_64*) ;;
-                *) echo "  THIN: ${f#./universal/reFX Remote.app/} -> $arches"; thin=$((thin+1)) ;;
+                *) echo "  THIN: ${f#./universal/reFX-Remote.app/} -> $arches"; thin=$((thin+1)) ;;
               esac
             fi
-          done < <(find "./universal/reFX Remote.app" -type f)
+          done < <(find "./universal/reFX-Remote.app" -type f)
           echo "thin Mach-O files remaining: $thin"
 
       - name: Import the reFX Developer ID certificate
@@ -1090,7 +1090,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
-          APP="./universal/reFX Remote.app"
+          APP="./universal/reFX-Remote.app"
           DMG="reFX-Remote-${{ env.VERSION }}-universal.dmg"
 
           if [ -n "${MACOS_CERT_P12:-}" ]; then
@@ -1108,7 +1108,7 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$APP"
 
           brew install create-dmg || true
-          create-dmg --icon "reFX Remote.app" 200 190 --hide-extension "reFX Remote.app" \
+          create-dmg --icon "reFX-Remote.app" 200 190 --hide-extension "reFX-Remote.app" \
             --window-size 800 400 --app-drop-link 600 185 "$DMG" "$APP"
 
           if [ -n "${MACOS_CERT_P12:-}" ]; then
