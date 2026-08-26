@@ -495,6 +495,11 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           watchIsInputMonitoring = true;
         }, help: 'Help', link: translate("doc_mac_permission"));
       } else if (!isOutgoingOnly &&
+          // reFX: run-once support tool, so never offer to install the
+          // LaunchDaemon that starts it at boot. Upstream gates the Windows
+          // install card on this flag but not this one, and mainIsInstalled()
+          // goes true just from dragging the app into /Applications.
+          !bind.isDisableInstallation() &&
           !svcStopped.value &&
           bind.mainIsInstalled() &&
           !bind.mainIsInstalledDaemon(prompt: false)) {
