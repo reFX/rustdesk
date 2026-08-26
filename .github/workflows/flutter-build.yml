@@ -51,6 +51,17 @@ env:
   MACOS_P12_BASE64: "${{ secrets.MACOS_P12_BASE64 }}"
   UPLOAD_ARTIFACT: "${{ inputs.upload-artifact }}"
   SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}-2"
+  # reFX: signing config. The account/profile/endpoint are not secret - they
+  # match Installer/win/metadata.json in the Nexus repo. Only the Azure app
+  # registration credentials are. AZURE_CLIENT_ID doubles as the "do we have
+  # signing credentials" flag, since a step `if:` cannot read the secrets
+  # context directly.
+  AZURE_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
+  REFX_SIGN_ENDPOINT: "https://wus2.codesigning.azure.net/"
+  REFX_SIGN_ACCOUNT: "reFX-Signing"
+  REFX_SIGN_PROFILE: "refxaudio"
+  REFX_TIMESTAMP_URL: "http://timestamp.acs.microsoft.com"
+  MACOS_CERT_P12: "${{ secrets.MACOS_CERT_P12 }}"
 
 jobs:
   generate-sbom:
@@ -348,6 +359,27 @@ jobs:
           pip3 install requests argparse
           BASE_URL=${{ env.SIGN_BASE_URL }} SECRET_KEY=${{ secrets.SIGN_SECRET_KEY }} python3 res/job.py sign_files ./rustdesk/
 
+      # reFX: sign the payload with our Azure Artifact (formerly Trusted)
+      # Signing certificate, the same one Nexus uses. Everything in ./rustdesk
+      # is what the self-extractor and the MSI wrap, so it has to be signed
+      # before those are built.
+      - name: Sign payload with the reFX certificate
+        if: env.UPLOAD_ARTIFACT == 'true' && env.AZURE_CLIENT_ID != ''
+        uses: azure/trusted-signing-action@v2.0.0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ env.REFX_SIGN_ENDPOINT }}
+          signing-account-name: ${{ env.REFX_SIGN_ACCOUNT }}
+          certificate-profile-name: ${{ env.REFX_SIGN_PROFILE }}
+          files-folder: ${{ github.workspace }}\rustdesk
+          files-folder-filter: exe,dll
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: ${{ env.REFX_TIMESTAMP_URL }}
+          timestamp-digest: SHA256
+
       - name: Build self-extracted executable
         shell: bash
         if: env.UPLOAD_ARTIFACT == 'true'
@@ -383,6 +415,32 @@ jobs:
         shell: bash
         run: |
           BASE_URL=${{ env.SIGN_BASE_URL }} SECRET_KEY=${{ secrets.SIGN_SECRET_KEY }} python3 res/job.py sign_files ./SignOutput
+
+      # reFX: the MSI and the self-extractor are what the customer downloads and
+      # double-clicks, so these are the ones that matter for SmartScreen
+      # reputation - sign them once assembled.
+      - name: Sign installers with the reFX certificate
+        if: env.UPLOAD_ARTIFACT == 'true' && env.AZURE_CLIENT_ID != ''
+        uses: azure/trusted-signing-action@v2.0.0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ env.REFX_SIGN_ENDPOINT }}
+          signing-account-name: ${{ env.REFX_SIGN_ACCOUNT }}
+          certificate-profile-name: ${{ env.REFX_SIGN_PROFILE }}
+          files-folder: ${{ github.workspace }}\SignOutput
+          files-folder-filter: exe,msi
+          file-digest: SHA256
+          timestamp-rfc3161: ${{ env.REFX_TIMESTAMP_URL }}
+          timestamp-digest: SHA256
+
+      - name: Upload signed Windows build
+        if: env.UPLOAD_ARTIFACT == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: refx-remote-windows-${{ matrix.job.arch }}
+          path: ./SignOutput/rustdesk-*
 
       - name: Publish Release
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
