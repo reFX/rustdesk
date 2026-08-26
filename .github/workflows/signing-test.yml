@@ -1,0 +1,113 @@
+name: Signing smoke test
+
+# reFX: a ~1 minute loop for debugging code signing, instead of waiting 40
+# minutes for a full build to reach the signing step. Nothing here is secret:
+# it prints sizes, hashes and lengths so we can tell a corrupted secret from a
+# wrong password, never a value.
+
+on:
+  push:
+    branches: [signing-test]
+  workflow_dispatch:
+
+jobs:
+  macos-signing:
+    runs-on: macos-14
+    env:
+      CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+      CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+      DEV_APP_ID: ${{ secrets.DEV_APP_ID }}
+    steps:
+      - name: Did the secret survive the round trip
+        run: |
+          set +e
+          echo "=== base64 secret as received ==="
+          printf 'base64 length      : %s\n' "${#CERT_P12}"
+          case "$CERT_P12" in
+            *$'\n'*) echo "contains newlines  : YES  <-- would corrupt the decode" ;;
+            *)       echo "contains newlines  : no" ;;
+          esac
+
+          echo "$CERT_P12" | base64 --decode > /tmp/cert.p12 2>/tmp/b64err
+          echo "base64 decode exit : $?"
+          [ -s /tmp/b64err ] && echo "decode stderr      : $(cat /tmp/b64err)"
+
+          echo
+          echo "=== decoded file ==="
+          printf 'bytes              : %s   (expected 3295)\n' "$(stat -f%z /tmp/cert.p12)"
+          printf 'sha256             : %s\n' "$(shasum -a 256 /tmp/cert.p12 | cut -c1-32)"
+          echo   'expected sha256    : f969e5d0c0ddedf2945a2adfa28d719d'
+          printf 'file type          : %s\n' "$(file -b /tmp/cert.p12)"
+
+          echo
+          echo "=== password shape ==="
+          printf 'length             : %s   (expected 20)\n' "${#CERT_PASSWORD}"
+          case "$CERT_PASSWORD" in
+            *' '*)   echo "contains a space   : YES" ;;
+            *)       echo "contains a space   : no" ;;
+          esac
+          case "$CERT_PASSWORD" in
+            *$'\n'*|*$'\r'*) echo "contains CR/LF     : YES  <-- would break import" ;;
+            *)               echo "contains CR/LF     : no" ;;
+          esac
+
+      - name: What does openssl make of it
+        run: |
+          set +e
+          echo "openssl version: $(openssl version)"
+          echo
+          echo "=== can openssl open it with this password? ==="
+          # openssl gives a far clearer answer than `security` does
+          openssl pkcs12 -in /tmp/cert.p12 -nokeys -passin env:CERT_PASSWORD -info 2>&1 \
+            | grep -viE "^-----|^[A-Za-z0-9+/=]{40,}$" | head -30
+          echo "openssl exit: $?"
+
+          echo
+          echo "=== try with an explicitly empty password ==="
+          openssl pkcs12 -in /tmp/cert.p12 -nokeys -passin pass: -info 2>&1 | head -5
+
+          echo
+          echo "=== legacy provider (older RC2/3DES encryption) ==="
+          openssl pkcs12 -in /tmp/cert.p12 -nokeys -passin env:CERT_PASSWORD -legacy -info 2>&1 | head -10
+
+      - name: security import
+        run: |
+          set +e
+          KP=$(uuidgen)
+          security create-keychain -p "$KP" test.keychain
+          security set-keychain-settings -lut 3600 test.keychain
+          security unlock-keychain -p "$KP" test.keychain
+
+          echo "=== import ==="
+          security import /tmp/cert.p12 -k test.keychain -P "$CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/productsign
+          echo "import exit: $?"
+
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KP" test.keychain >/dev/null 2>&1
+          security list-keychains -d user -s test.keychain login.keychain
+
+          echo
+          echo "=== identities now available ==="
+          security find-identity -v -p codesigning test.keychain
+          echo
+          echo "DEV_APP_ID we would sign with has length ${#DEV_APP_ID}"
+
+      - name: Sign something tiny
+        run: |
+          set +e
+          # smallest possible Mach-O to prove signing works end to end
+          printf 'int main(void){return 0;}\n' > /tmp/t.c
+          clang -o /tmp/t /tmp/t.c
+          echo "built: $(file -b /tmp/t)"
+
+          echo
+          echo "=== ad-hoc sign (should always work) ==="
+          codesign --force -s - /tmp/t && codesign --verify --verbose=2 /tmp/t
+          echo "ad-hoc exit: $?"
+
+          echo
+          echo "=== sign with the reFX Developer ID ==="
+          codesign --force --options runtime --timestamp -s "$DEV_APP_ID" /tmp/t -vvv
+          echo "developer id exit: $?"
+          codesign --verify --strict --verbose=2 /tmp/t
+          codesign -dvvv /tmp/t 2>&1 | grep -iE "Authority|TeamIdentifier|Timestamp" | head -6
