@@ -396,10 +396,14 @@ jobs:
         uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce # v2
 
       - name: Build msi
+        # reFX: off. We ship the self-extracting exe, and this MSI would
+        # carry upstream RustDesk's UpgradeCode (preprocess.py derives it
+        # from --app-name, default "RustDesk"), so installing it would
+        # replace a customer's real RustDesk and share its uninstall entry.
         # Builds the MSI for the matrix arch. res/msi (WiX v4 + native CustomActions) carries
         # both x64 and ARM64 platform configs; WcaUtil/DUtil ship arm64 libs. msbuild platform
         # is x64 / ARM64; the produced Package.msi is globbed since its bin/<platform>/ dir varies.
-        if: env.UPLOAD_ARTIFACT == 'true'
+        if: false
         run: |
           pushd ./res/msi
           python preprocess.py --arp -d ../../rustdesk
@@ -430,7 +434,7 @@ jobs:
           signing-account-name: ${{ env.REFX_SIGN_ACCOUNT }}
           certificate-profile-name: ${{ env.REFX_SIGN_PROFILE }}
           files-folder: ${{ github.workspace }}\SignOutput
-          files-folder-filter: exe,msi
+          files-folder-filter: exe
           file-digest: SHA256
           timestamp-rfc3161: ${{ env.REFX_TIMESTAMP_URL }}
           timestamp-digest: SHA256
@@ -440,7 +444,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: refx-remote-windows-${{ matrix.job.arch }}
-          path: ./SignOutput/rustdesk-*
+          path: ./SignOutput/rustdesk-*.exe
 
       - name: Publish Release
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
@@ -449,7 +453,6 @@ jobs:
           prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
-            ./SignOutput/rustdesk-*.msi
             ./SignOutput/rustdesk-*.exe
 
   # The fallback for the flutter version, we use Sciter for 32bit Windows.
@@ -2685,7 +2688,7 @@ jobs:
           popd
 
       - name: Publish web
-        if: env.UPLOAD_ARTIFACT == 'true'
+        if: false
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           prerelease: true
