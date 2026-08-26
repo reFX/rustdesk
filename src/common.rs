@@ -2339,15 +2339,20 @@ pub fn get_hwid() -> Bytes {
 
 // reFX: options forced on for the support client. The server address and key are
 // compiled in, so the customer must not be able to repoint the client at someone
-// else's server - that is the whole scam vector for a tool like this. Hiding the
-// help cards also keeps the UAC/permission nags out of a window we want to stay
-// down to "here is my ID and password".
+// else's server - that is the whole scam vector for a tool like this.
+//
+// The help cards are deliberately NOT hidden. They are the macOS Screen
+// Recording / Accessibility / Input Monitoring prompts and the Windows
+// elevation card, and each one has a button that opens the right settings pane
+// for the customer. Without a session cannot start at all, and support would be
+// reading System Settings directions down a ticket. The upgrade card that also
+// lives in there stays away on its own: it only appears when the URI prefix
+// contains "rustdesk", and ours is refxremote.
 const REFX_FORCED_OPTIONS: &[&str] = &[
     keys::OPTION_HIDE_NETWORK_SETTINGS,
     keys::OPTION_HIDE_SERVER_SETTINGS,
     keys::OPTION_HIDE_PROXY_SETTINGS,
     keys::OPTION_HIDE_WEBSOCKET_SETTINGS,
-    keys::OPTION_HIDE_HELP_CARDS,
 ];
 
 #[inline]
