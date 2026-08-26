@@ -365,7 +365,7 @@ jobs:
       # before those are built.
       - name: Sign payload with the reFX certificate
         if: env.UPLOAD_ARTIFACT == 'true' && env.AZURE_CLIENT_ID != ''
-        uses: azure/trusted-signing-action@v2.0.0
+        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -421,7 +421,7 @@ jobs:
       # reputation - sign them once assembled.
       - name: Sign installers with the reFX certificate
         if: env.UPLOAD_ARTIFACT == 'true' && env.AZURE_CLIENT_ID != ''
-        uses: azure/trusted-signing-action@v2.0.0
+        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
