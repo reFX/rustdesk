@@ -2330,8 +2330,25 @@ pub fn get_hwid() -> Bytes {
     Bytes::from(hasher.finalize().to_vec())
 }
 
+// reFX: options forced on for the support client. The server address and key are
+// compiled in, so the customer must not be able to repoint the client at someone
+// else's server - that is the whole scam vector for a tool like this. Hiding the
+// help cards also keeps the UAC/permission nags out of a window we want to stay
+// down to "here is my ID and password".
+const REFX_FORCED_OPTIONS: &[&str] = &[
+    keys::OPTION_HIDE_NETWORK_SETTINGS,
+    keys::OPTION_HIDE_SERVER_SETTINGS,
+    keys::OPTION_HIDE_PROXY_SETTINGS,
+    keys::OPTION_HIDE_WEBSOCKET_SETTINGS,
+    keys::OPTION_HIDE_HELP_CARDS,
+];
+
 #[inline]
 pub fn get_builtin_option(key: &str) -> String {
+    if REFX_FORCED_OPTIONS.contains(&key) {
+        return "Y".to_owned();
+    }
+
     config::BUILTIN_SETTINGS
         .read()
         .unwrap()
