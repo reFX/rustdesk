@@ -14,6 +14,11 @@
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
+	<!-- reFX: what Finder, the Dock and the menu bar show. Set here rather than
+	     via PRODUCT_NAME so the bundle on disk stays RustDesk.app and the build
+	     scripts, xcscheme and create-dmg paths keep working unchanged. -->
+	<key>CFBundleDisplayName</key>
+	<string>reFX Remote</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
