@@ -17,7 +17,11 @@ const APP_METADATA: &[u8] = include_bytes!("../app_metadata.toml");
 const APP_METADATA: &[u8] = &[];
 const APP_METADATA_CONFIG: &str = "meta.toml";
 const META_LINE_PREFIX_TIMESTAMP: &str = "timestamp = ";
-const APP_PREFIX: &str = "rustdesk";
+// reFX: the self-extractor unpacks to %LOCALAPPDATA%\<APP_PREFIX> and wipes
+// that directory whenever the embedded timestamp does not match (see setup()).
+// Left as "rustdesk" it shares a directory with a stock RustDesk install, and
+// the two clobber each other on every launch. Ours lives somewhere else.
+const APP_PREFIX: &str = "reFX Remote";
 const APPNAME_RUNTIME_ENV_KEY: &str = "RUSTDESK_APPNAME";
 #[cfg(windows)]
 const SET_FOREGROUND_WINDOW_ENV_KEY: &str = "SET_FOREGROUND_WINDOW";
