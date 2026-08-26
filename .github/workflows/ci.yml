@@ -9,10 +9,8 @@ env:
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths-ignore:
-      - "docs/**"
-      - "README.md"
+  # reFX: see flutter-ci.yml - no pull_request trigger on a public fork. This
+  # workflow builds the sciter and Linux variants we do not ship anyway.
   push:
     branches:
       - master

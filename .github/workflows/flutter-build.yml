@@ -947,6 +947,172 @@ jobs:
           files: |
             rustdesk*-${{ matrix.job.arch }}.dmg
 
+  # reFX: one download that runs on both Intel and Apple Silicon. The two macOS
+  # jobs upload dmgs rather than the .app - see the note on their upload step,
+  # tarring a bundle destroys the symlink structure and codesign then fails - so
+  # this mounts both, lipo-merges every Mach-O it finds, and repackages.
+  build-macos-universal:
+    name: macos universal
+    needs: [build-for-macOS]
+    runs-on: macos-14
+    if: ${{ inputs.upload-artifact }}
+    steps:
+      - name: Download the Intel build
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: rustdesk-unsigned-macos-x86_64
+          path: ./dmg-x86_64
+
+      - name: Download the Apple Silicon build
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: rustdesk-unsigned-macos-aarch64
+          path: ./dmg-aarch64
+
+      - name: Extract both apps
+        run: |
+          set -euo pipefail
+          for arch in x86_64 aarch64; do
+            dmg=$(ls ./dmg-$arch/*.dmg | head -1)
+            mnt=$(mktemp -d)
+            hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mnt"
+            mkdir -p "./app-$arch"
+            # -R preserves the symlinks inside the bundle
+            cp -R "$mnt/RustDesk.app" "./app-$arch/"
+            hdiutil detach "$mnt"
+            echo "$arch: $(du -sh ./app-$arch/RustDesk.app | cut -f1)"
+          done
+
+      - name: Merge into a universal binary
+        run: |
+          set -euo pipefail
+          ARM="./app-aarch64/RustDesk.app"
+          X64="./app-x86_64/RustDesk.app"
+          # Start from the arm64 bundle and replace each Mach-O with a fat one.
+          # Everything else - assets, plists, symlinks - is identical between the
+          # two, so the arm64 copy is already correct.
+          rm -rf ./universal && mkdir -p ./universal
+          cp -R "$ARM" ./universal/
+          OUT="./universal/RustDesk.app"
+
+          merged=0; skipped=0; missing=0
+          while IFS= read -r f; do
+            rel="${f#$OUT/}"
+            x="$X64/$rel"
+            # only real files, and only Mach-O ones
+            if ! file -b "$f" | grep -q "Mach-O"; then continue; fi
+            if [ ! -f "$x" ]; then
+              echo "  no Intel counterpart: $rel"
+              missing=$((missing+1))
+              continue
+            fi
+            if lipo -create "$f" "$x" -output "$f.fat" 2>/dev/null; then
+              mv "$f.fat" "$f"
+              merged=$((merged+1))
+            else
+              # already fat, or the two are the same slice
+              rm -f "$f.fat"
+              skipped=$((skipped+1))
+            fi
+          done < <(find "$OUT" -type f)
+
+          echo "merged=$merged skipped=$skipped missing_intel=$missing"
+          if [ "$merged" -eq 0 ]; then
+            echo "::error::lipo merged nothing - the bundle layout must have changed"
+            exit 1
+          fi
+
+      - name: Verify the result is actually universal
+        run: |
+          set -euo pipefail
+          BIN="./universal/RustDesk.app/Contents/MacOS/RustDesk"
+          lipo -info "$BIN"
+          for want in x86_64 arm64; do
+            if ! lipo -info "$BIN" | grep -q "$want"; then
+              echo "::error::main binary is missing the $want slice"
+              exit 1
+            fi
+          done
+          echo "--- every Mach-O in the bundle ---"
+          thin=0
+          while IFS= read -r f; do
+            if file -b "$f" | grep -q "Mach-O"; then
+              arches=$(lipo -archs "$f" 2>/dev/null || echo "?")
+              case "$arches" in
+                *x86_64*arm64*|*arm64*x86_64*) ;;
+                *) echo "  THIN: ${f#./universal/RustDesk.app/} -> $arches"; thin=$((thin+1)) ;;
+              esac
+            fi
+          done < <(find ./universal/RustDesk.app -type f)
+          echo "thin Mach-O files remaining: $thin"
+
+      - name: Import the reFX Developer ID certificate
+        if: env.MACOS_CERT_P12 != ''
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # A hosted runner has no keychain of ours, unlike the self-hosted Macs
+          # Nexus builds on, so the cert has to be installed for this run only.
+          KEYCHAIN_PASS=$(uuidgen)
+          security create-keychain -p "$KEYCHAIN_PASS" refx.keychain
+          security set-keychain-settings -lut 3600 refx.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASS" refx.keychain
+          echo "$CERT_P12" | base64 --decode > /tmp/refx.p12
+          security import /tmp/refx.p12 -k refx.keychain -P "$CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/productsign
+          rm -f /tmp/refx.p12
+          # let codesign use the key without an interactive prompt
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASS" refx.keychain >/dev/null
+          security list-keychains -d user -s refx.keychain login.keychain
+          security find-identity -v -p codesigning refx.keychain
+
+      - name: Sign, package and notarize
+        env:
+          DEV_APP_ID: ${{ secrets.DEV_APP_ID }}
+          APPLE_ID_USERNAME: ${{ secrets.APPLE_ID_USERNAME }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          APP="./universal/RustDesk.app"
+          DMG="reFX-Remote-${{ env.VERSION }}-universal.dmg"
+
+          if [ -n "${MACOS_CERT_P12:-}" ]; then
+            # --deep so the merged frameworks get signed too; lipo invalidated
+            # whatever signatures they arrived with
+            codesign --force --options runtime --timestamp --deep --strict \
+              -s "$DEV_APP_ID" "$APP" -vvv
+          else
+            # No cert available: ad-hoc sign so the bundle at least launches for
+            # testing. lipo leaves the inherited signatures invalid, and macOS
+            # refuses to run an app whose signature does not match.
+            echo "no signing certificate - ad-hoc signing for test purposes only"
+            codesign --force --deep -s - "$APP"
+          fi
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+          brew install create-dmg || true
+          create-dmg --icon "RustDesk.app" 200 190 --hide-extension "RustDesk.app" \
+            --window-size 800 400 --app-drop-link 600 185 "$DMG" "$APP"
+
+          if [ -n "${MACOS_CERT_P12:-}" ]; then
+            codesign --force --options runtime --timestamp -s "$DEV_APP_ID" "$DMG" -vvv
+            xcrun notarytool submit --wait --timeout 30m \
+              --apple-id "$APPLE_ID_USERNAME" --password "$APPLE_ID_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" "$DMG"
+            xcrun stapler staple "$DMG"
+            xcrun stapler validate "$DMG"
+          fi
+
+      - name: Upload the universal build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: refx-remote-macos-universal
+          path: reFX-Remote-*.dmg
+
   publish_unsigned:
     needs:
       - build-for-macOS

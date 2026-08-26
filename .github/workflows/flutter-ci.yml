@@ -2,10 +2,12 @@ name: Full Flutter CI
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths-ignore:
-    - "docs/**"
-    - "README.md"
+  # reFX: no pull_request trigger. This is a public fork of a popular project,
+  # so anyone can open a PR against it, and this workflow inherits the org
+  # signing secrets. GitHub withholds secrets from fork PRs, but the trigger
+  # would still let a stranger spend an hour of runner time per push, and it is
+  # one settings change away from being genuinely dangerous. We do not take
+  # outside contributions here - work lands on refx directly.
   push:
     # reFX: our work lives on refx, and we want a build out of every push.
     # res/ and .github/ are no longer ignored - the icons are compiled into the
