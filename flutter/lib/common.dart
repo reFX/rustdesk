@@ -3743,95 +3743,33 @@ Color? disabledTextColor(BuildContext context, bool enabled) {
       : Theme.of(context).textTheme.titleLarge?.color?.withOpacity(0.6);
 }
 
-Widget loadPowered(BuildContext context) {
-  if (bind.mainGetBuildinOption(key: "hide-powered-by-me") == 'Y') {
-    return SizedBox.shrink();
-  }
-  return MouseRegion(
-    cursor: SystemMouseCursors.click,
-    child: GestureDetector(
-      onTap: () {
-        launchUrl(Uri.parse('https://rustdesk.com'));
-      },
-      child: Opacity(
-          opacity: 0.5,
-          child: Text(
-            translate("powered_by_me"),
-            overflow: TextOverflow.clip,
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(fontSize: 9, decoration: TextDecoration.underline),
-          )),
-    ),
-  ).marginOnly(top: 6);
-}
-
-const _kDefaultLogoAsset = 'assets/logo.png';
-const _kLightLogoAsset = 'assets/logo_light.png';
-const _kDarkLogoAsset = 'assets/logo_dark.png';
-
-List<String> _logoAssetCandidatesForBrightness(Brightness brightness) {
-  return brightness == Brightness.dark
-      ? [_kDarkLogoAsset, _kDefaultLogoAsset]
-      : [_kLightLogoAsset, _kDefaultLogoAsset];
-}
-
-Future<String?> _resolveLogoAsset(Brightness brightness) async {
-  for (final asset in _logoAssetCandidatesForBrightness(brightness)) {
-    try {
-      await rootBundle.load(asset);
-      return asset;
-    } on FlutterError {
-      continue;
-    }
-  }
-  return null;
-}
-
-class _Logo extends StatefulWidget {
+// reFX: our own mark in place of upstream's "Powered by RustDesk" line, linking
+// to us rather than to them.
+//
+// Upstream probed for a logo.png that its build injects, in light and dark
+// variants. We only ever ship one logo, and the branding artwork is a
+// single-path monochrome lockup, so it is tinted to the current theme here
+// instead - which also keeps it sharp on a hidpi display.
+class _Logo extends StatelessWidget {
   const _Logo();
 
   @override
-  State<_Logo> createState() => _LogoState();
-}
-
-class _LogoState extends State<_Logo> {
-  final Map<Brightness, Future<String?>> _logoFutures = {};
-
-  Future<String?> _logoFutureFor(Brightness brightness) {
-    return _logoFutures.putIfAbsent(
-      brightness,
-      () => _resolveLogoAsset(brightness),
-    );
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return FutureBuilder<String?>(
-      future: _logoFutureFor(Theme.of(context).brightness),
-      builder: (BuildContext context, AsyncSnapshot<String?> snapshot) {
-        final asset = snapshot.data;
-        if (asset != null) {
-          final image = Image.asset(
-            asset,
-            fit: BoxFit.contain,
-            errorBuilder: (ctx, error, stackTrace) {
-              return Container();
-            },
-          );
-          return Container(
-            constraints: BoxConstraints(maxWidth: 300, maxHeight: 60),
-            child: image,
-          ).marginOnly(left: 12, right: 12, top: 12);
-        }
-        return const Offstage();
-      },
-    );
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => launchUrl(Uri.parse('https://refx.com')),
+        child: SvgPicture.asset(
+          'assets/logo.svg',
+          width: 100,
+          colorFilter: svgColor(Theme.of(context).textTheme.bodyLarge?.color ??
+              Theme.of(context).colorScheme.onSurface),
+        ),
+      ),
+    ).marginOnly(left: 12, right: 12, top: 12);
   }
 }
 
-// max 300 x 60
 Widget loadLogo() => const _Logo();
 
 Widget loadIcon(double size) {
