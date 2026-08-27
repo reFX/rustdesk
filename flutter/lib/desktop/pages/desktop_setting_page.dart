@@ -2461,7 +2461,11 @@ class _AboutState extends State<_About> {
                     launchUrlString('https://rustdesk.com');
                   },
                   child: Text(
-                    translate('Website'),
+                    // reFX: "Website" would read as ours, and this one is
+                    // theirs. lang.rs exempts this key from the RustDesk ->
+                    // app name substitution, so it stays "Powered by RustDesk"
+                    // and is already translated everywhere.
+                    translate('powered_by_me'),
                     style: linkStyle,
                   ).marginSymmetric(vertical: 4.0)),
               Container(
