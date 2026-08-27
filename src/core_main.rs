@@ -950,9 +950,15 @@ mod tests {
 
 /// Check if the executable is a Quick Support version.
 /// Note: This function must be kept in sync with `libs/portable/src/main.rs`.
+///
+/// reFX: always true. This build only ever does one attended session, so it
+/// wants the portable service - one UAC prompt, an elevated helper, nothing
+/// installed - rather than the boot service upstream installs to get past UAC.
+/// Deciding it on the filename would mean a customer who renames the download
+/// silently loses elevation, and that failure looks like "the agent cannot
+/// click anything", which is miserable to diagnose over a ticket.
 #[cfg(windows)]
 #[inline]
-fn is_quick_support_exe(exe: &str) -> bool {
-    let exe = exe.to_lowercase();
-    exe.contains("-qs-") || exe.contains("-qs.exe") || exe.contains("_qs.exe")
+fn is_quick_support_exe(_exe: &str) -> bool {
+    true
 }

@@ -244,9 +244,12 @@ mod win {
 
     /// Check if the executable is a Quick Support version.
     /// Note: This function must be kept in sync with `src/core_main.rs`.
+    ///
+    /// reFX: always true, matching core_main.rs. The extractor decides here
+    /// whether to pass --quick_support to the payload, so both have to agree
+    /// or the payload never enters quick-support mode.
     #[inline]
-    pub(super) fn is_quick_support_exe(exe: &str) -> bool {
-        let exe = exe.to_lowercase();
-        exe.contains("-qs-") || exe.contains("-qs.exe") || exe.contains("_qs.exe")
+    pub(super) fn is_quick_support_exe(_exe: &str) -> bool {
+        true
     }
 }
